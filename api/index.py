@@ -1,0 +1,9 @@
+"""Vercel serverless entrypoint for the FastAPI app."""
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from api_gateway import app  # noqa: E402

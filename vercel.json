@@ -2,19 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api_gateway.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api_gateway.py"
+      "dest": "api/index.py"
     }
-  ],
-  "functions": {
-    "api_gateway.py": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }

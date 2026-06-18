@@ -38,7 +38,7 @@ HARM_CATEGORIES = [
 ]
 POLICY_PATH = Path(os.getenv("POLICIES_PATH", "config/policies.json"))
 PROMPT_PATH = Path(os.getenv("MODERATION_PROMPT_PATH", "config/moderation_prompt.md"))
-DB_PATH = Path(os.getenv("MODERATION_DB_PATH", "moderation.db"))
+DB_PATH = Path(os.getenv("MODERATION_DB_PATH", "/tmp/moderation.db" if os.getenv("VERCEL") else "moderation.db"))
 SQLITE_TIMEOUT_SECONDS = float(os.getenv("SQLITE_TIMEOUT_SECONDS", "10"))
 
 PLATFORM_ALIASES = {
