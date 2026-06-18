@@ -8,18 +8,21 @@ let idCounter = 0
 const STYLES = {
   success: {
     icon: CheckCircle2,
-    accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+    accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 shadow-[0_8px_30px_-8px_rgba(16,185,129,0.5)]',
     iconColor: 'text-emerald-400',
+    bar: 'bg-emerald-400',
   },
   error: {
     icon: XCircle,
-    accent: 'border-red-500/40 bg-red-500/10 text-red-300',
+    accent: 'border-red-500/40 bg-red-500/10 text-red-300 shadow-[0_8px_30px_-8px_rgba(239,68,68,0.5)]',
     iconColor: 'text-red-400',
+    bar: 'bg-red-400',
   },
   info: {
     icon: Info,
-    accent: 'border-brand/40 bg-brand/10 text-brand-soft',
+    accent: 'border-brand/40 bg-brand/10 text-brand-soft shadow-[0_8px_30px_-8px_rgba(99,102,241,0.5)]',
     iconColor: 'text-brand-soft',
+    bar: 'bg-brand',
   },
 }
 
@@ -58,13 +61,17 @@ export function ToastProvider({ children }) {
           return (
             <div
               key={t.id}
-              className={`pointer-events-auto flex animate-slide-in items-start gap-3 rounded-lg border px-4 py-3 shadow-raised backdrop-blur ${style.accent}`}
+              className={`pointer-events-auto relative flex animate-slide-in items-start gap-3 overflow-hidden rounded-xl border px-4 py-3 pl-5 shadow-raised backdrop-blur-md ${style.accent}`}
             >
+              <span
+                className={`absolute inset-y-0 left-0 w-1 ${style.bar}`}
+                aria-hidden="true"
+              />
               <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${style.iconColor}`} />
               <p className="flex-1 text-sm leading-snug">{t.message}</p>
               <button
                 onClick={() => dismiss(t.id)}
-                className="shrink-0 text-current/70 transition-opacity hover:opacity-100"
+                className="-mr-1 shrink-0 rounded-md p-0.5 text-current/70 transition-all duration-200 hover:bg-white/10 hover:text-current hover:opacity-100 active:scale-90"
                 aria-label="Dismiss"
               >
                 <X className="h-4 w-4" />

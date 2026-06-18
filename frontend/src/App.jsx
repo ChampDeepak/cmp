@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { Activity } from 'lucide-react'
 import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Moderate from './pages/Moderate.jsx'
 import Results from './pages/Results.jsx'
 import Platforms from './pages/Platforms.jsx'
-import { api, API_URL } from './api.js'
+import { api } from './api.js'
 
 const TITLES = {
   '/': 'Dashboard',
@@ -35,7 +34,7 @@ function HealthPill({ health }) {
   return (
     <div
       title={title}
-      className="flex items-center gap-2 rounded-full border border-surface-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-slate-300"
+      className="flex items-center gap-2 rounded-full border border-surface-border bg-surface-raised/70 px-3 py-1.5 text-xs font-medium text-slate-300 backdrop-blur transition-all duration-300 hover:border-brand/40 hover:bg-surface-raised hover:text-white"
     >
       <span className="relative flex h-2 w-2">
         {(health === null || (health && health.status === 'running')) && (
@@ -43,9 +42,11 @@ function HealthPill({ health }) {
             className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${dot}`}
           />
         )}
-        <span className={`relative inline-flex h-2 w-2 rounded-full ${dot}`} />
+        <span
+          className={`relative inline-flex h-2 w-2 rounded-full shadow-[0_0_8px_currentColor] transition-colors duration-300 ${dot}`}
+        />
       </span>
-      {label}
+      <span className="transition-colors duration-300">{label}</span>
     </div>
   )
 }
@@ -76,20 +77,24 @@ export default function App() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-surface-border bg-surface-card/60 px-6 backdrop-blur">
-          <h1 className="text-lg font-semibold text-white">{title}</h1>
+        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-surface-border/70 bg-surface-card/50 px-6 backdrop-blur-xl">
+          <h1
+            key={location.pathname}
+            className="animate-fade-in text-lg font-semibold tracking-tight text-white"
+          >
+            {title}
+          </h1>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex">
-              <Activity className="h-3.5 w-3.5" />
-              {API_URL}
-            </span>
             <HealthPill health={health} />
           </div>
         </header>
 
         {/* Page body */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="mx-auto max-w-7xl animate-fade-in">
+          <div
+            key={location.pathname}
+            className="mx-auto max-w-7xl animate-fade-in"
+          >
             <Routes>
               <Route path="/" element={<Dashboard health={health} />} />
               <Route path="/moderate" element={<Moderate />} />
@@ -101,9 +106,10 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="flex h-9 shrink-0 items-center justify-between border-t border-surface-border bg-surface-card px-6 text-xs text-slate-600">
-          <span>ModGuard Admin · AI Content Moderation</span>
-          <span className="font-mono">API: {API_URL}</span>
+        <footer className="flex h-9 shrink-0 items-center justify-between border-t border-surface-border/70 bg-surface-card/50 px-6 text-xs text-slate-600 backdrop-blur">
+          <span className="transition-colors duration-300 hover:text-slate-400">
+            ModGuard Admin · AI Content Moderation
+          </span>
         </footer>
       </div>
     </div>

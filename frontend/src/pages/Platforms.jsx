@@ -54,12 +54,12 @@ export default function Platforms() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+    <div className="grid animate-fade-in grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Table */}
       <div className="lg:col-span-3">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white">
-            Registered Platforms
+          <h2 className="text-base font-semibold">
+            <span className="text-gradient">Registered Platforms</span>
           </h2>
           <button onClick={load} className="btn-ghost" disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -75,33 +75,33 @@ export default function Platforms() {
           ) : platforms.length === 0 ? (
             <EmptyState message="No platforms registered yet." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="animate-fade-in overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3 font-medium">ID</th>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Email</th>
+                  <tr className="border-b border-surface-border bg-surface-raised/40 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <th className="px-4 py-3">ID</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Email</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {platforms.map((p) => (
                     <tr
                       key={p.id}
-                      className="transition-colors hover:bg-surface-raised/50"
+                      className="group transition-colors duration-200 hover:bg-surface-raised/60"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                      <td className="border-l-2 border-transparent px-4 py-3 font-mono text-xs text-slate-500 transition-colors duration-200 group-hover:border-brand group-hover:text-slate-300">
                         #{p.id}
                       </td>
-                      <td className="px-4 py-3 font-medium text-slate-200">
+                      <td className="px-4 py-3 font-medium text-slate-200 transition-colors duration-200 group-hover:text-white">
                         <span className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-slate-500" />
+                          <Building2 className="h-4 w-4 text-slate-500 transition-colors duration-200 group-hover:text-brand-soft" />
                           {p.name}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-400">
                         <span className="flex items-center gap-2">
-                          <Mail className="h-3.5 w-3.5 text-slate-600" />
+                          <Mail className="h-3.5 w-3.5 text-slate-600 transition-colors duration-200 group-hover:text-slate-400" />
                           {p.email}
                         </span>
                       </td>
@@ -116,11 +116,11 @@ export default function Platforms() {
 
       {/* Register form */}
       <div className="lg:col-span-2">
-        <div className="card p-6">
+        <div className="card animate-scale-in p-6">
           <div className="mb-5 flex items-center gap-2">
             <Plus className="h-5 w-5 text-brand-soft" />
-            <h2 className="text-base font-semibold text-white">
-              Register Platform
+            <h2 className="text-base font-semibold">
+              <span className="text-gradient">Register Platform</span>
             </h2>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">

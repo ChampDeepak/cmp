@@ -64,24 +64,29 @@ export default function Results() {
   const results = Array.isArray(resultsData) ? resultsData : []
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <select
-            className="input w-56"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="">All platforms</option>
-            {platforms.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <span className="text-sm text-slate-500">
-            {results.length} result{results.length === 1 ? '' : 's'}
-          </span>
+    <div className="animate-fade-in space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">
+            <span className="text-gradient">Moderation Results</span>
+          </h2>
+          <div className="mt-2 flex items-center gap-3">
+            <select
+              className="input w-56"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              <option value="">All platforms</option>
+              {platforms.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-500">
+              {results.length} result{results.length === 1 ? '' : 's'}
+            </span>
+          </div>
         </div>
         <button
           onClick={loadResults}
@@ -101,25 +106,25 @@ export default function Results() {
         ) : results.length === 0 ? (
           <EmptyState message="No moderation results found." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="animate-fade-in overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3 font-medium">Platform</th>
-                  <th className="px-4 py-3 font-medium">Category</th>
-                  <th className="px-4 py-3 font-medium">Confidence</th>
-                  <th className="px-4 py-3 font-medium">Flagged Keywords</th>
-                  <th className="px-4 py-3 font-medium">Reason</th>
-                  <th className="px-4 py-3 font-medium">Completed</th>
+                <tr className="border-b border-surface-border bg-surface-raised/40 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="px-4 py-3">Platform</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="px-4 py-3">Confidence</th>
+                  <th className="px-4 py-3">Flagged Keywords</th>
+                  <th className="px-4 py-3">Reason</th>
+                  <th className="px-4 py-3">Completed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
                 {results.map((r) => (
                   <tr
                     key={r.request_id}
-                    className="align-top transition-colors hover:bg-surface-raised/50"
+                    className="group align-top transition-colors duration-200 hover:bg-surface-raised/60"
                   >
-                    <td className="px-4 py-3 font-medium text-slate-200">
+                    <td className="border-l-2 border-transparent px-4 py-3 font-medium text-slate-200 transition-colors duration-200 group-hover:border-brand group-hover:text-white">
                       {r.platform_name}
                     </td>
                     <td className="px-4 py-3">

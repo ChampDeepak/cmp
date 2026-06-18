@@ -1,13 +1,14 @@
 import { Loader2, AlertTriangle, Inbox } from 'lucide-react'
+import Loader from './Loader.jsx'
 
 // ---- Category badge ---------------------------------------------------------
 
 const CATEGORY_STYLES = {
-  safe: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-  'self-harm': 'border-red-500/40 bg-red-500/10 text-red-300',
-  'hate-speech': 'border-orange-500/40 bg-orange-500/10 text-orange-300',
-  'adult-content': 'border-rose-500/40 bg-rose-500/10 text-rose-300',
-  error: 'border-slate-500/40 bg-slate-500/10 text-slate-400',
+  safe: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:shadow-[0_0_12px_-2px_rgba(16,185,129,0.5)]',
+  'self-harm': 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:shadow-[0_0_12px_-2px_rgba(239,68,68,0.5)]',
+  'hate-speech': 'border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:shadow-[0_0_12px_-2px_rgba(249,115,22,0.5)]',
+  'adult-content': 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 hover:shadow-[0_0_12px_-2px_rgba(244,63,94,0.5)]',
+  error: 'border-slate-500/40 bg-slate-500/10 text-slate-400 hover:bg-slate-500/20',
 }
 
 export const CATEGORY_CHART_COLORS = {
@@ -22,7 +23,7 @@ export function CategoryBadge({ category }) {
   const style = CATEGORY_STYLES[category] || CATEGORY_STYLES.error
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${style}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize transition-all duration-200 ${style}`}
     >
       {category || 'unknown'}
     </span>
@@ -42,14 +43,14 @@ export function ConfidenceBar({ score }) {
         ? 'bg-amber-500'
         : 'bg-red-500'
   return (
-    <div className="flex items-center gap-2">
+    <div className="group flex items-center gap-2">
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-700">
         <div
-          className={`h-full rounded-full ${color}`}
+          className={`h-full rounded-full transition-all duration-500 ease-out ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="w-10 text-right text-xs tabular-nums text-slate-400">
+      <span className="w-10 text-right text-xs tabular-nums text-slate-400 transition-colors group-hover:text-slate-200">
         {pct}%
       </span>
     </div>
@@ -67,7 +68,7 @@ export function KeywordChips({ keywords }) {
       {keywords.map((kw, i) => (
         <span
           key={`${kw}-${i}`}
-          className="rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-slate-300"
+          className="rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-slate-300 transition-all duration-200 hover:bg-brand/20 hover:text-brand-soft"
         >
           {kw}
         </span>
@@ -80,17 +81,18 @@ export function KeywordChips({ keywords }) {
 
 export function LoadingState({ label = 'Loading…' }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-400">
-      <Loader2 className="h-6 w-6 animate-spin text-brand-soft" />
-      <p className="text-sm">{label}</p>
+    <div className="flex items-center justify-center py-12">
+      <Loader size={52} label={label} />
     </div>
   )
 }
 
 export function ErrorState({ message, onRetry }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-      <AlertTriangle className="h-7 w-7 text-red-400" />
+    <div className="flex animate-fade-in flex-col items-center justify-center gap-3 py-12 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10">
+        <AlertTriangle className="h-6 w-6 text-red-400" />
+      </div>
       <p className="max-w-md text-sm text-slate-400">{message}</p>
       {onRetry && (
         <button onClick={onRetry} className="btn-ghost mt-1">
@@ -103,8 +105,10 @@ export function ErrorState({ message, onRetry }) {
 
 export function EmptyState({ message = 'Nothing here yet.' }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
-      <Inbox className="h-7 w-7" />
+    <div className="flex animate-fade-in flex-col items-center justify-center gap-3 py-12 text-slate-500">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-700/40">
+        <Inbox className="h-6 w-6" />
+      </div>
       <p className="text-sm">{message}</p>
     </div>
   )

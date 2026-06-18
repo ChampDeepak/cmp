@@ -70,12 +70,19 @@ export default function Moderate() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Form */}
-      <div className="card p-6 lg:col-span-3">
-        <div className="mb-5 flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-brand-soft" />
-          <h2 className="text-base font-semibold text-white">
-            Submit Content for Moderation
-          </h2>
+      <div className="card animate-fade-in p-6 lg:col-span-3">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-brand/40 bg-brand/10 shadow-glow">
+            <ShieldCheck className="h-5 w-5 text-brand-soft" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gradient">
+              Submit Content for Moderation
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Queue a post or comment for AI-powered review.
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -131,16 +138,16 @@ export default function Moderate() {
 
             <div>
               <span className="label">Audience Age</span>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5 rounded-xl border border-surface-border bg-surface-raised p-1">
                 {AGE_OPTIONS.map((opt) => (
                   <button
                     type="button"
                     key={opt.value}
                     onClick={() => setAge(opt.value)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
                       age === opt.value
-                        ? 'border-brand bg-brand/15 text-brand-soft'
-                        : 'border-surface-border bg-surface-raised text-slate-300 hover:border-slate-500'
+                        ? 'scale-[1.02] border border-brand/50 bg-brand/15 text-brand-soft shadow-glow'
+                        : 'border border-transparent text-slate-400 hover:bg-surface-card hover:text-slate-200'
                     }`}
                   >
                     {opt.label}
@@ -162,10 +169,19 @@ export default function Moderate() {
       {/* Result / info panel */}
       <div className="lg:col-span-2">
         {result ? (
-          <div className="card animate-fade-in p-6">
-            <div className="mb-4 flex items-center gap-2 text-emerald-400">
-              <CheckCircle2 className="h-5 w-5" />
-              <h3 className="text-sm font-semibold">Request Queued</h3>
+          <div className="card animate-scale-in border-emerald-500/30 p-6 shadow-glow">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse-glow">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-emerald-300">
+                  Request Queued
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Successfully accepted for processing.
+                </p>
+              </div>
             </div>
             <dl className="space-y-3 text-sm">
               <div>
@@ -178,20 +194,20 @@ export default function Moderate() {
                   </code>
                   <button
                     onClick={copyRequestId}
-                    className="shrink-0 text-slate-500 hover:text-slate-200"
+                    className="shrink-0 rounded-md p-1 text-slate-500 transition-all duration-200 hover:bg-surface-raised hover:text-brand-soft active:scale-90"
                     title="Copy"
                   >
                     <Copy className="h-4 w-4" />
                   </button>
                 </dd>
               </div>
-              <div className="flex justify-between rounded-lg bg-surface-raised px-3 py-2">
+              <div className="flex justify-between rounded-lg bg-surface-raised px-3 py-2 transition-colors hover:bg-surface-raised/70">
                 <dt className="text-slate-400">Queue</dt>
                 <dd className="font-mono text-slate-200">{result.queue_name}</dd>
               </div>
-              <div className="flex justify-between rounded-lg bg-surface-raised px-3 py-2">
+              <div className="flex justify-between rounded-lg bg-surface-raised px-3 py-2 transition-colors hover:bg-surface-raised/70">
                 <dt className="text-slate-400">Queue Size</dt>
-                <dd className="font-semibold text-slate-200">
+                <dd className="font-semibold text-emerald-300">
                   {result.queue_size}
                 </dd>
               </div>
@@ -202,13 +218,15 @@ export default function Moderate() {
             </p>
           </div>
         ) : (
-          <div className="card flex h-full flex-col justify-center gap-3 p-6 text-sm text-slate-400">
-            <ShieldCheck className="h-8 w-8 text-slate-600" />
-            <p>
+          <div className="card animate-fade-in flex h-full flex-col items-center justify-center gap-4 p-8 text-center text-sm text-slate-400">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-surface-border bg-surface-raised animate-float">
+              <ShieldCheck className="h-8 w-8 text-brand-soft/70" />
+            </div>
+            <p className="max-w-xs">
               Submitted content is pushed onto the moderation queue and analyzed
               by the AI worker.
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="max-w-xs text-xs text-slate-500">
               The age selector influences strictness — content for under-18
               audiences is moderated more conservatively.
             </p>
