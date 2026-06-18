@@ -2,13 +2,30 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
+
+
+def load_env_file(path: Path = Path(".env")) -> None:
+    """Load simple KEY=VALUE pairs for local runs without adding a dependency."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_env_file()
 
 HARM_CATEGORIES = [
     "hate_speech",
@@ -108,66 +125,6 @@ def severity(confidence: float) -> str:
     return "none"
 
 
-def local_classify(inp: ModerationInput) -> Dict[str, Any]:
-    """Deterministic baseline used for tests and offline demos.
-
-    The production path is the Groq prompt classifier. This baseline is intentionally
-    transparent so the project can be tested without external API keys.
-    """
-    text = inp.content.lower()
-    context = inp.conversation_context.lower()
-    scores = {cat: 0.0 for cat in HARM_CATEGORIES}
-    segment = ""
-    explanation = "No configured harm signal matched in the offline baseline classifier."
-
-    rules: List[Tuple[str, float, List[str], str]] = [
-        ("hate_speech", 0.95, [r"subhuman", r"go back to your country", r"all\s+\w+\s+are\s+animals"], "Targets a protected/group identity."),
-        ("harassment", 0.86, [r"fuck\s+off", r"fuck\s+you", r"idiot", r"worthless", r"useless", r"should disappear"], "Targets another person with abusive or degrading language."),
-        ("harassment", 0.92, [r"i will kill you", r"i will hurt you"], "Direct threat or intimidation."),
-        ("spam", 0.91, [r"buy followers", r"click this link", r"free money", r"limited offer"], "Spam or manipulative promotion."),
-        ("misinformation", 0.90, [r"vaccines? cause autism", r"vote by text", r"election is cancelled"], "Potential harmful misinformation."),
-        ("graphic_violence", 0.90, [r"blood everywhere", r"gory", r"decapitat", r"guts"], "Graphic violent content."),
-        ("adult_content", 0.92, [r"explicit nudes", r"porn", r"sexual content", r"adult joke"], "Adult or sexual content."),
-        ("self_harm", 0.96, [r"i want to die", r"kill myself", r"suicide", r"self harm"], "Self-harm or suicidal ideation."),
-    ]
-
-    for category, base_score, patterns, base_reason in rules:
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if not match:
-                continue
-
-            adjusted = base_score
-            reason_text = base_reason
-            if any(word in context for word in ["movie", "quote", "fiction", "joke", "performance"]):
-                adjusted = max(0.20, adjusted - 0.55)
-                reason_text += " Context suggests quoted/fictional/slang usage, lowering severity."
-            if any(word in context for word in ["argument", "bullying", "threat"]):
-                adjusted = min(0.99, adjusted + 0.05)
-                reason_text += " Conversation context suggests escalation."
-
-            adjusted = round(adjusted, 2)
-            if adjusted > scores[category]:
-                scores[category] = adjusted
-            if adjusted >= max(scores.values()):
-                segment = inp.content[match.start() : match.end()]
-                explanation = reason_text
-
-    primary = max(scores, key=scores.get)
-    if scores[primary] == 0:
-        primary = "none"
-
-    return {
-        "categories": scores,
-        "primary_category": primary,
-        "severity": severity(scores.get(primary, 0.0)),
-        "offending_segment": segment,
-        "explanation": explanation,
-        "context_analysis": "Conversation context, platform, and user history were considered by the offline baseline classifier.",
-        "recommended_action": "human_review" if scores.get(primary, 0) >= 0.5 else "allow",
-    }
-
-
 def normalize_ai_result(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize Groq JSON into the pipeline contract.
 
@@ -239,13 +196,15 @@ def groq_classify(inp: ModerationInput, policy: Dict[str, Any]) -> Dict[str, Any
 
 
 def choose_provider() -> str:
-    requested = os.getenv("CLASSIFIER_PROVIDER", "auto").strip().lower()
+    requested = os.getenv("CLASSIFIER_PROVIDER", "groq").strip().lower()
     if requested == "auto":
-        return "groq" if os.getenv("GROQ_API_KEY") else "local"
+        return "groq"
     return requested
 
 
 def route(primary: str, confidence: float, policy: Dict[str, Any]) -> tuple[str, str, bool]:
+    if not policy.get("category_toggles", {}).get(primary, True):
+        return "allow", "allow", False
     if primary == "none" or confidence < policy.get("review_threshold", 0.55):
         return "allow", "allow", False
     if primary in {"self_harm", "graphic_violence"} and confidence >= policy["thresholds"].get(primary, 0.55):
@@ -260,22 +219,13 @@ def moderate(inp: ModerationInput) -> Dict[str, Any]:
     inp.platform = canonical_platform(inp.platform)
     policy = get_policy(inp.platform)
     provider = choose_provider()
-    provider_requested = os.getenv("CLASSIFIER_PROVIDER", "auto")
+    provider_requested = os.getenv("CLASSIFIER_PROVIDER", "groq")
 
     if provider == "groq":
-        try:
-            ai = groq_classify(inp, policy)
-            classifier_provider = "groq_llm"
-        except Exception as exc:
-            ai = local_classify(inp)
-            ai["explanation"] = f"Groq classification failed; offline baseline fallback used. {ai.get('explanation', '')}"
-            ai["context_analysis"] = f"Groq error: {exc}. Local fallback considered available context."
-            classifier_provider = "local_fallback"
-    elif provider == "local":
-        ai = local_classify(inp)
-        classifier_provider = "local_keyword_baseline"
+        ai = groq_classify(inp, policy)
+        classifier_provider = "groq_llm"
     else:
-        raise ValueError("CLASSIFIER_PROVIDER must be auto, groq, or local")
+        raise ValueError("CLASSIFIER_PROVIDER must be groq or auto")
 
     scores = {cat: float(ai.get("categories", {}).get(cat, 0.0)) for cat in HARM_CATEGORIES}
     primary = ai.get("primary_category") or max(scores, key=scores.get)

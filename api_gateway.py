@@ -43,7 +43,8 @@ def health_check() -> Dict[str, Any]:
     return {
         "status": "running",
         "service": "ai-content-moderation-pipeline",
-        "classifier_provider": os.getenv("CLASSIFIER_PROVIDER", "auto"),
+        "classifier_provider": os.getenv("CLASSIFIER_PROVIDER", "groq"),
+        "groq_configured": bool(os.getenv("GROQ_API_KEY")),
         "features": ["multi-category classification", "context-aware analysis", "policy routing", "human review", "evaluation", "audit logs"],
     }
 
@@ -52,7 +53,14 @@ def moderate_content(request: ModerationRequest) -> Dict[str, Any]:
     content = request.content or request.text
     if not content:
         raise HTTPException(status_code=422, detail="content or text is required")
-    return moderate(ModerationInput(content=content, platform=request.platform, conversation_context=request.conversation_context, user_history=request.user_history))
+    try:
+        return moderate(ModerationInput(content=content, platform=request.platform, conversation_context=request.conversation_context, user_history=request.user_history))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Groq classification failed: {exc}") from exc
 
 @app.post("/queue")
 def queue_content(request: ModerationRequest) -> Dict[str, Any]:
@@ -87,7 +95,14 @@ def policy(platform: str):
 
 @app.post("/evaluate")
 def evaluate():
-    return run_evaluation()
+    try:
+        return run_evaluation()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Groq classification failed: {exc}") from exc
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui():
