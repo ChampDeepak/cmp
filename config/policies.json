@@ -2,6 +2,19 @@
   "children_app": {
     "auto_action_threshold": 0.85,
     "review_threshold": 0.50,
+    "category_toggles": {
+      "hate_speech": true,
+      "harassment": true,
+      "spam": true,
+      "misinformation": true,
+      "graphic_violence": true,
+      "adult_content": true,
+      "self_harm": true
+    },
+    "custom_rules": [
+      "Apply stricter handling to adult content, graphic violence, harassment, and self-harm.",
+      "Escalate any credible self-harm signal for review or urgent intervention."
+    ],
     "thresholds": {
       "hate_speech": 0.50,
       "harassment": 0.60,
@@ -15,6 +28,19 @@
   "social_media": {
     "auto_action_threshold": 0.88,
     "review_threshold": 0.55,
+    "category_toggles": {
+      "hate_speech": true,
+      "harassment": true,
+      "spam": true,
+      "misinformation": true,
+      "graphic_violence": true,
+      "adult_content": true,
+      "self_harm": true
+    },
+    "custom_rules": [
+      "Use conversation context to distinguish quoted or fictional statements from targeted abuse.",
+      "Route ambiguous harmful claims or borderline harassment to human review."
+    ],
     "thresholds": {
       "hate_speech": 0.65,
       "harassment": 0.70,
@@ -28,6 +54,19 @@
   "adult_discussion_platform": {
     "auto_action_threshold": 0.90,
     "review_threshold": 0.60,
+    "category_toggles": {
+      "hate_speech": true,
+      "harassment": true,
+      "spam": true,
+      "misinformation": true,
+      "graphic_violence": true,
+      "adult_content": true,
+      "self_harm": true
+    },
+    "custom_rules": [
+      "Adult discussion is allowed when consensual and non-exploitative, but harassment and hate speech remain violations.",
+      "Do not treat adult content as harmful solely because it is mature; use the configured adult_content threshold."
+    ],
     "thresholds": {
       "hate_speech": 0.75,
       "harassment": 0.80,

@@ -20,7 +20,7 @@ File: `moderation_pipeline.py`
 Adds a complete moderation flow:
 
 1. receive content
-2. classify harm categories
+2. classify harm categories with the Groq LLM and structured system prompt
 3. apply platform policy
 4. route decision
 5. store audit log
@@ -61,6 +61,8 @@ Adds a prompt that asks Groq to return structured JSON with:
 - explanation
 - context analysis
 - recommended action
+
+The production pipeline no longer contains a keyword/regex moderation fallback. Tests mock the Groq classifier boundary, but runtime classification is prompt-driven.
 
 ### 4. All assignment harm categories
 File: `moderation_pipeline.py`

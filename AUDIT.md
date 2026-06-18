@@ -23,7 +23,7 @@ This feature branch fixes the missing assignment requirements while keeping chan
 
 - Add configurable policies.
 - Fix Groq environment usage and structured prompt.
-- Add local fallback classifier for offline testing.
+- Use Groq with the structured moderation prompt for runtime classification; mock the Groq boundary in tests.
 - Add direct `/moderate` decision endpoint.
 - Keep Redis queue optional instead of required.
 - Add review queue and policy endpoints.
