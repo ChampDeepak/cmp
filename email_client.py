@@ -1,34 +1,52 @@
-import smtplib
 import os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = os.getenv("SMTP_PORT")
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+# Resend sends mail over HTTPS (port 443), which Render allows — unlike raw
+# SMTP (ports 25/465/587), which Render blocks. Same send_email() signature
+# as before, so the worker doesn't change.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
+# The "from" address. Resend only accepts either:
+#   - "onboarding@resend.dev" (test mode — ONLY delivers to the email you
+#     signed up to Resend with), or
+#   - an address on a domain you've verified in the Resend dashboard.
+# Override with RESEND_FROM once your domain is verified.
+RESEND_FROM = os.getenv("RESEND_FROM", "onboarding@resend.dev")
+
+RESEND_API_URL = "https://api.resend.com/emails"
+
 
 def send_email(recipient_email: str, subject: str, body: str):
-    """Sends an email using SMTP."""
-    if not all([SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL]):
-        print("⚠️ Email configuration is incomplete. Skipping email.")
+    """Sends an email using the Resend HTTP API."""
+    if not RESEND_API_KEY:
+        print("⚠️ RESEND_API_KEY not set. Skipping email.")
         return
 
-    message = MIMEMultipart()
-    message["From"] = SENDER_EMAIL
-    message["To"] = recipient_email
-    message["Subject"] = subject
-    message.attach(MIMEText(body, "plain"))
-
     try:
-        with smtplib.SMTP(SMTP_SERVER, int(SMTP_PORT)) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SENDER_EMAIL, recipient_email, message.as_string())
-            print(f" Email sent to {recipient_email}")
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": RESEND_FROM,
+                "to": [recipient_email],
+                "subject": subject,
+                "text": body,
+            },
+            timeout=15.0,
+        )
+
+        if response.status_code in (200, 201):
+            message_id = response.json().get("id")
+            print(f" Email sent to {recipient_email} (Resend id: {message_id})")
+        else:
+            # Resend returns a JSON error body explaining what went wrong
+            # (e.g. unverified domain, invalid 'from', bad API key).
+            print(f"Failed to send email: {response.status_code} {response.text}")
     except Exception as e:
         print(f"Failed to send email: {e}")
