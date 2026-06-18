@@ -1,62 +1,308 @@
+import uuid
 import asyncio
-import multiprocessing
-import uvicorn
-from api_gateway import app as fastapi_app
-from worker import moderation_worker
+from datetime import datetime
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, EmailStr
+from redis_client import redis_client, QUEUE_NAME
+from database import get_db_pool, close_db_pool, register_platform
 from init_db import initialize_database
+from worker import moderation_worker
 
-def run_api_server():
-    """
-    Starts the FastAPI Uvicorn server in a separate process.
-    """
-    print("🚀 Starting API Gateway Server on http://127.0.0.1:8000")
-    uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="info")
 
-def run_worker():
-    """
-    Starts the moderation worker in a separate process.
-    """
-    print("👷 Starting Moderation Worker...")
-    try:
-        asyncio.run(moderation_worker())
-    except KeyboardInterrupt:
-        print("🛑 Worker process interrupted.")
+# ==========================
+# Lifespan (Startup & Shutdown)
+# ==========================
 
-async def main():
-    """
-    Initializes the database and starts all services.
-    """
-    # 1. Initialize the database first
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup ---
     print("--- Initializing Database ---")
     await initialize_database()
     print("--- Database is Ready ---")
 
-    # 2. Create processes for the API server and the worker
-    api_process = multiprocessing.Process(target=run_api_server)
-    worker_process = multiprocessing.Process(target=run_worker)
+    # Warm the shared connection pool once at startup so requests reuse it.
+    print("--- Warming database connection pool ---")
+    await get_db_pool()
+    print("--- Connection pool ready ---")
+
+    # Start the worker as a background async task
+    print("👷 Starting Moderation Worker as background task...")
+    worker_task = asyncio.create_task(moderation_worker())
+
+    yield  # App is running and serving requests
+
+    # --- Shutdown ---
+    print("🛑 Shutting down worker...")
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        print("--- Worker stopped. ---")
+
+    # Close the shared connection pool.
+    print("--- Closing database connection pool ---")
+    await close_db_pool()
+
+
+app = FastAPI(
+    title="AI Content Moderation API Gateway",
+    description="Receives moderation requests and pushes them to Redis queue",
+    version="1.0",
+    lifespan=lifespan
+)
+
+# Enable CORS for frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ==========================
+# Request Schemas
+# ==========================
+
+class ModerationRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    platform_id: int
+    age: str
+
+class PlatformRegistrationRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    email: EmailStr # Pydantic will validate the email format
+
+
+# ==========================
+# Health Check
+# ==========================
+
+@app.get("/")
+async def health_check():
+    health_status = {
+        "status": "running",
+        "service": "content-moderation-api-gateway",
+        "dependencies": {
+            "redis": "unknown",
+            "database": "unknown"
+        }
+    }
+    
+    # Check Redis
+    try:
+        await redis_client.ping()
+        health_status["dependencies"]["redis"] = "ok"
+    except Exception as e:
+        health_status["dependencies"]["redis"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    # Check Database (uses the shared pool; do not close it)
+    try:
+        db_pool = await get_db_pool()
+        async with db_pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+        health_status["dependencies"]["database"] = "ok"
+    except Exception as e:
+        health_status["dependencies"]["database"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    return health_status
+
+
+# ==========================
+# Platform Registration
+# ==========================
+
+@app.post("/register-platform")
+async def register_platform_endpoint(request: PlatformRegistrationRequest):
+    try:
+        db_pool = await get_db_pool()
+        new_id = await register_platform(db_pool, request.name, request.email)
+        
+        if new_id:
+            return {
+                "status": "success",
+                "message": f"Platform '{request.name}' registered successfully.",
+                "platform_id": new_id
+            }
+        else:
+            # This happens if the platform name already exists
+            raise HTTPException(
+                status_code=409, # 409 Conflict
+                detail=f"Platform '{request.name}' already exists."
+            )
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions so FastAPI can handle them correctly
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to register platform: {str(e)}"
+        )
+
+
+# ==========================
+# Queue Moderation Request
+# ==========================
+
+@app.post("/moderate")
+async def moderate_content(request: ModerationRequest):
 
     try:
-        # 3. Start both processes
-        api_process.start()
-        worker_process.start()
 
-        # 4. Wait for the processes to finish (they run forever until interrupted)
-        api_process.join()
-        worker_process.join()
+        request_id = str(uuid.uuid4())
 
-    except KeyboardInterrupt:
-        print("\n🛑 Shutting down all services...")
-        # 5. Terminate processes on Ctrl+C
-        api_process.terminate()
-        worker_process.terminate()
-        
-        # Wait for processes to exit
-        api_process.join()
-        worker_process.join()
-        
-        print("--- All services shut down. ---")
+        event = {
+            "request_id": request_id,
+            "text": request.text,
+            "platform_id": request.platform_id,
+            "age": request.age,
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
-if __name__ == "__main__":
-    # 'spawn' is a safer way to create processes on macOS and Windows
-    multiprocessing.set_start_method("spawn", force=True)
-    asyncio.run(main())
+        await redis_client.xadd(QUEUE_NAME,event)
+
+        queue_size = await redis_client.xlen(QUEUE_NAME)
+
+        return {
+            "status": "queued",
+            "request_id": request_id,
+            "queue_name": QUEUE_NAME,
+            "queue_size": queue_size
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to queue request: {str(e)}"
+        )
+
+
+# ==========================
+# Queue Statistics
+# ==========================
+
+@app.get("/queue/stats")
+async def queue_stats():
+
+    try:
+
+        return {
+            "queue_name": QUEUE_NAME,
+            "queue_size": await redis_client.xlen(QUEUE_NAME)
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+# ==========================
+# List Platforms
+# ==========================
+
+@app.get("/platforms")
+async def list_platforms():
+    try:
+        db_pool = await get_db_pool()
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, email FROM platforms ORDER BY id")
+            return [dict(row) for row in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================
+# Moderation Results
+# ==========================
+
+@app.get("/moderation-results")
+async def get_moderation_results(platform_id: int = Query(None)):
+    try:
+        db_pool = await get_db_pool()
+        async with db_pool.acquire() as conn:
+            if platform_id:
+                rows = await conn.fetch(
+                    """SELECT mr.request_id, mr.platform_id, p.name as platform_name,
+                              mr.reason, mr.post_category, mr.confidence_score,
+                              mr.flagged_keywords, mr.completed_at
+                       FROM moderation_results mr
+                       JOIN platforms p ON mr.platform_id = p.id
+                       WHERE mr.platform_id = $1
+                       ORDER BY mr.completed_at DESC""",
+                    platform_id
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT mr.request_id, mr.platform_id, p.name as platform_name,
+                              mr.reason, mr.post_category, mr.confidence_score,
+                              mr.flagged_keywords, mr.completed_at
+                       FROM moderation_results mr
+                       JOIN platforms p ON mr.platform_id = p.id
+                       ORDER BY mr.completed_at DESC"""
+                )
+            results = []
+            for row in rows:
+                r = dict(row)
+                r["request_id"] = str(r["request_id"])
+                if r["completed_at"]:
+                    r["completed_at"] = r["completed_at"].isoformat()
+                results.append(r)
+            return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================
+# Admin Dashboard Stats
+# ==========================
+
+@app.get("/admin/dashboard-stats")
+async def admin_dashboard_stats():
+    try:
+        db_pool = await get_db_pool()
+        async with db_pool.acquire() as conn:
+            # Collapse the three scalar aggregates into a single round-trip.
+            totals = await conn.fetchrow(
+                """SELECT
+                       (SELECT COUNT(*) FROM platforms)                    AS total_platforms,
+                       (SELECT COUNT(*) FROM moderation_results)           AS total_results,
+                       (SELECT AVG(confidence_score) FROM moderation_results) AS avg_confidence"""
+            )
+            total_platforms = totals["total_platforms"]
+            total_results = totals["total_results"]
+            avg_confidence = totals["avg_confidence"]
+            category_rows = await conn.fetch(
+                """SELECT post_category, COUNT(*) as count
+                   FROM moderation_results
+                   GROUP BY post_category
+                   ORDER BY count DESC"""
+            )
+            categories = {row["post_category"]: row["count"] for row in category_rows}
+
+            queue_size = 0
+            try:
+                queue_size = await redis_client.xlen(QUEUE_NAME)
+            except Exception:
+                pass
+
+            return {
+                "total_platforms": total_platforms,
+                "total_moderation_results": total_results,
+                "avg_confidence_score": round(float(avg_confidence), 3) if avg_confidence else 0,
+                "categories": categories,
+                "queue_size": queue_size
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

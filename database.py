@@ -1,4 +1,5 @@
 import asyncpg
+import asyncio
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -6,9 +7,32 @@ from datetime import datetime
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
+
+_pool = None
+_pool_lock = asyncio.Lock()
+
 async def get_db_pool():
-    """Create and returns the connection pool."""
-    return await asyncpg.create_pool(SUPABASE_URL,ssl="require",statement_cache_size=0,command_timeout=60)
+    """Return the shared connection pool, creating it lazily on first call.
+
+    The pool is a process-wide singleton so the expensive TCP+TLS+auth
+    handshake to Supabase happens once, not on every request.
+    """
+    global _pool
+    if _pool is not None:
+        return _pool
+    async with _pool_lock:
+        # Re-check inside the lock in case another coroutine created it
+        # while we were waiting.
+        if _pool is None:
+            _pool = await asyncpg.create_pool(SUPABASE_URL, ssl="require", statement_cache_size=0, command_timeout=60)
+    return _pool
+
+async def close_db_pool():
+    """Close the shared connection pool and reset it so it can be recreated."""
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
 
 async def setup_supabase_table(pool):
     """Create and initialize the database tables IF they don't exist."""
@@ -83,5 +107,6 @@ async def save_request_result(pool, request_id, platform_id, reason, post_catego
         await conn.execute('''
             INSERT INTO moderation_results (request_id, platform_id, reason, post_category,confidence_score,flagged_keywords, completed_at)
             VALUES ($1, $2, $3, $4, $5 , $6 , $7)
+            ON CONFLICT (request_id) DO NOTHING
         ''', request_id , platform_id , reason , post_category , confidence_score , flagged_keywords , datetime.utcnow())
     print(f"Result '{post_category}' saved to Supabase for request '{request_id}")

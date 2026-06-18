@@ -1,0 +1,24 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Secrets / local config
+.env
+
+# Frontend (deployed separately on Vercel)
+frontend/node_modules/
+frontend/dist/
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/

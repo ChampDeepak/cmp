@@ -1,0 +1,30 @@
+# Render Blueprint — deploy with: New + > Blueprint > connect this repo.
+# Render reads this file and provisions the service automatically.
+services:
+  - type: web
+    name: content-moderation-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    # Render injects PORT automatically; main.py reads it.
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      # Use a managed Redis (Upstash) URL. rediss:// (TLS) is supported.
+      - key: REDIS_URL
+        sync: false
+      - key: QUEUE_NAME
+        value: moderation_queue
+      - key: SMTP_SERVER
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SENDER_EMAIL
+        sync: false

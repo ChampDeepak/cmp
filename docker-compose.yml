@@ -1,0 +1,33 @@
+# Local one-command run: `docker compose up --build`
+# Supabase, Groq and SMTP are remote services — put their creds in .env.
+# Only Redis runs locally here.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      # Host 8001 -> container 8000 (host 8000 is taken on this machine, and the
+      # frontend's VITE_API_URL already points at 8001).
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      # Point the app at the local redis service. This overrides any
+      # REDIS_HOST in .env so local Docker "just works". (REDIS_URL is unset,
+      # so redis_client.py uses the host/port path below.)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      PORT: 8000
+    depends_on:
+      redis:
+        condition: service_healthy
