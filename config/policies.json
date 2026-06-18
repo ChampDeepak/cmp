@@ -1,0 +1,41 @@
+{
+  "children_app": {
+    "auto_action_threshold": 0.85,
+    "review_threshold": 0.50,
+    "thresholds": {
+      "hate_speech": 0.50,
+      "harassment": 0.60,
+      "spam": 0.75,
+      "misinformation": 0.60,
+      "graphic_violence": 0.45,
+      "adult_content": 0.30,
+      "self_harm": 0.40
+    }
+  },
+  "social_media": {
+    "auto_action_threshold": 0.88,
+    "review_threshold": 0.55,
+    "thresholds": {
+      "hate_speech": 0.65,
+      "harassment": 0.70,
+      "spam": 0.80,
+      "misinformation": 0.70,
+      "graphic_violence": 0.65,
+      "adult_content": 0.60,
+      "self_harm": 0.50
+    }
+  },
+  "adult_discussion_platform": {
+    "auto_action_threshold": 0.90,
+    "review_threshold": 0.60,
+    "thresholds": {
+      "hate_speech": 0.75,
+      "harassment": 0.80,
+      "spam": 0.85,
+      "misinformation": 0.75,
+      "graphic_violence": 0.75,
+      "adult_content": 0.90,
+      "self_harm": 0.55
+    }
+  }
+}
