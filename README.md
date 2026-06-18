@@ -24,7 +24,7 @@ Focused PR upgrade for Assignment 10. The app now works as a real moderation ass
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-CLASSIFIER_PROVIDER=local uvicorn api_gateway:app --reload
+CLASSIFIER_PROVIDER=auto uvicorn api_gateway:app --reload
 ```
 
 Real Groq mode:
@@ -64,3 +64,8 @@ Open:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+
+## Provider behavior
+
+`CLASSIFIER_PROVIDER=auto` is the recommended default. It uses Groq when `GROQ_API_KEY` is present and falls back to the transparent local baseline when no external key is configured. Use `CLASSIFIER_PROVIDER=groq` to force Groq, or `CLASSIFIER_PROVIDER=local` for deterministic offline tests.

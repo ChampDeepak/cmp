@@ -43,7 +43,7 @@ def health_check() -> Dict[str, Any]:
     return {
         "status": "running",
         "service": "ai-content-moderation-pipeline",
-        "classifier_provider": os.getenv("CLASSIFIER_PROVIDER", "local"),
+        "classifier_provider": os.getenv("CLASSIFIER_PROVIDER", "auto"),
         "features": ["multi-category classification", "context-aware analysis", "policy routing", "human review", "evaluation", "audit logs"],
     }
 
@@ -59,6 +59,8 @@ def queue_content(request: ModerationRequest) -> Dict[str, Any]:
     if redis_client is None:
         raise HTTPException(status_code=503, detail="Redis is not configured")
     content = request.content or request.text
+    if not content:
+        raise HTTPException(status_code=422, detail="content or text is required")
     event = request.model_dump()
     event["content"] = content
     redis_client.lpush(QUEUE_NAME, json.dumps(event))

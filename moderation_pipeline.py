@@ -8,14 +8,28 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
-HARM_CATEGORIES = ["hate_speech", "harassment", "spam", "misinformation", "graphic_violence", "adult_content", "self_harm"]
+HARM_CATEGORIES = [
+    "hate_speech",
+    "harassment",
+    "spam",
+    "misinformation",
+    "graphic_violence",
+    "adult_content",
+    "self_harm",
+]
 POLICY_PATH = Path(os.getenv("POLICIES_PATH", "config/policies.json"))
 PROMPT_PATH = Path(os.getenv("MODERATION_PROMPT_PATH", "config/moderation_prompt.md"))
 DB_PATH = Path(os.getenv("MODERATION_DB_PATH", "moderation.db"))
+SQLITE_TIMEOUT_SECONDS = float(os.getenv("SQLITE_TIMEOUT_SECONDS", "10"))
 
-PLATFORM_ALIASES = {"general": "social_media", "forKids": "children_app", "adult": "adult_discussion_platform"}
+PLATFORM_ALIASES = {
+    "general": "social_media",
+    "forKids": "children_app",
+    "adult": "adult_discussion_platform",
+}
+
 
 @dataclass
 class ModerationInput:
@@ -39,25 +53,38 @@ def get_policy(platform: str) -> Dict[str, Any]:
     return policies.get(platform, policies["social_media"])
 
 
+def open_db() -> sqlite3.Connection:
+    """Open SQLite with settings that are safer for API-style concurrent access."""
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECONDS)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    return conn
+
+
 def init_db() -> None:
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
+    with open_db() as conn:
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS moderation_logs(
                 id TEXT PRIMARY KEY,
                 request_json TEXT NOT NULL,
                 response_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS review_queue(
                 case_id TEXT PRIMARY KEY,
                 response_json TEXT NOT NULL,
                 status TEXT DEFAULT 'pending',
                 created_at TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS moderator_feedback(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 case_id TEXT NOT NULL,
@@ -65,17 +92,35 @@ def init_db() -> None:
                 notes TEXT,
                 created_at TEXT NOT NULL
             )
-        """)
+            """
+        )
+
+
+def severity(confidence: float) -> str:
+    if confidence >= 0.92:
+        return "critical"
+    if confidence >= 0.80:
+        return "high"
+    if confidence >= 0.55:
+        return "medium"
+    if confidence > 0:
+        return "low"
+    return "none"
 
 
 def local_classify(inp: ModerationInput) -> Dict[str, Any]:
+    """Deterministic baseline used for tests and offline demos.
+
+    The production path is the Groq prompt classifier. This baseline is intentionally
+    transparent so the project can be tested without external API keys.
+    """
     text = inp.content.lower()
     context = inp.conversation_context.lower()
     scores = {cat: 0.0 for cat in HARM_CATEGORIES}
     segment = ""
-    explanation = "No configured harm rule matched."
+    explanation = "No configured harm signal matched in the offline baseline classifier."
 
-    rules = [
+    rules: List[Tuple[str, float, List[str], str]] = [
         ("hate_speech", 0.95, [r"subhuman", r"go back to your country", r"all\s+\w+\s+are\s+animals"], "Targets a protected/group identity."),
         ("harassment", 0.86, [r"fuck\s+off", r"fuck\s+you", r"idiot", r"worthless", r"useless", r"should disappear"], "Targets another person with abusive or degrading language."),
         ("harassment", 0.92, [r"i will kill you", r"i will hurt you"], "Direct threat or intimidation."),
@@ -85,58 +130,119 @@ def local_classify(inp: ModerationInput) -> Dict[str, Any]:
         ("adult_content", 0.92, [r"explicit nudes", r"porn", r"sexual content", r"adult joke"], "Adult or sexual content."),
         ("self_harm", 0.96, [r"i want to die", r"kill myself", r"suicide", r"self harm"], "Self-harm or suicidal ideation."),
     ]
-    for category, score, patterns, reason in rules:
+
+    for category, base_score, patterns, base_reason in rules:
         for pattern in patterns:
             match = re.search(pattern, text)
-            if match:
-                adjusted = score
-                if any(word in context for word in ["movie", "quote", "fiction", "joke", "performance"]):
-                    adjusted = max(0.20, adjusted - 0.55)
-                    reason += " Context suggests quoted/fictional/slang usage, lowering severity."
-                if any(word in context for word in ["argument", "bullying", "threat"]):
-                    adjusted = min(0.99, adjusted + 0.05)
-                    reason += " Conversation context suggests escalation."
-                scores[category] = max(scores[category], round(adjusted, 2))
-                if adjusted >= max(scores.values()):
-                    segment = inp.content[match.start():match.end()]
-                    explanation = reason
+            if not match:
+                continue
+
+            adjusted = base_score
+            reason_text = base_reason
+            if any(word in context for word in ["movie", "quote", "fiction", "joke", "performance"]):
+                adjusted = max(0.20, adjusted - 0.55)
+                reason_text += " Context suggests quoted/fictional/slang usage, lowering severity."
+            if any(word in context for word in ["argument", "bullying", "threat"]):
+                adjusted = min(0.99, adjusted + 0.05)
+                reason_text += " Conversation context suggests escalation."
+
+            adjusted = round(adjusted, 2)
+            if adjusted > scores[category]:
+                scores[category] = adjusted
+            if adjusted >= max(scores.values()):
+                segment = inp.content[match.start() : match.end()]
+                explanation = reason_text
+
     primary = max(scores, key=scores.get)
     if scores[primary] == 0:
         primary = "none"
+
     return {
         "categories": scores,
         "primary_category": primary,
         "severity": severity(scores.get(primary, 0.0)),
         "offending_segment": segment,
         "explanation": explanation,
-        "context_analysis": "Context considered by local fallback classifier.",
+        "context_analysis": "Conversation context, platform, and user history were considered by the offline baseline classifier.",
         "recommended_action": "human_review" if scores.get(primary, 0) >= 0.5 else "allow",
+    }
+
+
+def normalize_ai_result(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize Groq JSON into the pipeline contract.
+
+    The prompt asks for a rich schema, but this also accepts the simpler
+    `post_category`/`confidence_score` shape used by earlier implementations.
+    """
+    categories = {cat: 0.0 for cat in HARM_CATEGORIES}
+    raw_categories = raw.get("categories") or raw.get("category_scores") or {}
+    if isinstance(raw_categories, dict):
+        for cat in HARM_CATEGORIES:
+            try:
+                categories[cat] = max(0.0, min(1.0, float(raw_categories.get(cat, 0.0))))
+            except (TypeError, ValueError):
+                categories[cat] = 0.0
+
+    primary = raw.get("primary_category") or raw.get("post_category") or raw.get("category") or "none"
+    aliases = {"safe": "none", "self-harm": "self_harm", "hate-speech": "hate_speech", "adult-content": "adult_content"}
+    primary = aliases.get(str(primary), str(primary))
+    if primary in HARM_CATEGORIES and categories[primary] == 0.0:
+        try:
+            categories[primary] = max(0.0, min(1.0, float(raw.get("confidence_score", raw.get("confidence", 0.0)))))
+        except (TypeError, ValueError):
+            categories[primary] = 0.0
+    if primary not in HARM_CATEGORIES or categories.get(primary, 0.0) == 0.0:
+        primary = max(categories, key=categories.get)
+        if categories[primary] == 0.0:
+            primary = "none"
+
+    confidence = categories.get(primary, 0.0) if primary != "none" else 0.0
+    return {
+        "categories": categories,
+        "primary_category": primary,
+        "severity": raw.get("severity") or severity(confidence),
+        "offending_segment": raw.get("offending_segment") or ", ".join(raw.get("flagged_keywords", []) or []),
+        "explanation": raw.get("explanation") or raw.get("reasoning") or "Groq returned a structured moderation decision.",
+        "context_analysis": raw.get("context_analysis", "Groq prompt considered content, context, user history, and platform policy."),
+        "recommended_action": raw.get("recommended_action", "human_review" if confidence >= 0.55 else "allow"),
     }
 
 
 def groq_classify(inp: ModerationInput, policy: Dict[str, Any]) -> Dict[str, Any]:
     from groq import Groq
+
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY is required when CLASSIFIER_PROVIDER=groq")
+        raise RuntimeError("GROQ_API_KEY is required for Groq classification")
+
     client = Groq(api_key=api_key)
     prompt = PROMPT_PATH.read_text()
-    payload = {"content": inp.content, "platform": inp.platform, "conversation_context": inp.conversation_context, "user_history": inp.user_history, "policy": policy}
+    payload = {
+        "content": inp.content,
+        "platform": inp.platform,
+        "conversation_context": inp.conversation_context,
+        "user_history": inp.user_history,
+        "policy": policy,
+        "required_categories": HARM_CATEGORIES,
+    }
     response = client.chat.completions.create(
         model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         temperature=0.1,
         response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(payload)}],
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": json.dumps(payload)},
+        ],
     )
-    return json.loads(response.choices[0].message.content or "{}")
+    raw = json.loads(response.choices[0].message.content or "{}")
+    return normalize_ai_result(raw)
 
 
-def severity(confidence: float) -> str:
-    if confidence >= 0.92: return "critical"
-    if confidence >= 0.80: return "high"
-    if confidence >= 0.55: return "medium"
-    if confidence > 0: return "low"
-    return "none"
+def choose_provider() -> str:
+    requested = os.getenv("CLASSIFIER_PROVIDER", "auto").strip().lower()
+    if requested == "auto":
+        return "groq" if os.getenv("GROQ_API_KEY") else "local"
+    return requested
 
 
 def route(primary: str, confidence: float, policy: Dict[str, Any]) -> tuple[str, str, bool]:
@@ -153,18 +259,23 @@ def moderate(inp: ModerationInput) -> Dict[str, Any]:
     init_db()
     inp.platform = canonical_platform(inp.platform)
     policy = get_policy(inp.platform)
-    provider = os.getenv("CLASSIFIER_PROVIDER", "local")
+    provider = choose_provider()
+    provider_requested = os.getenv("CLASSIFIER_PROVIDER", "auto")
+
     if provider == "groq":
         try:
             ai = groq_classify(inp, policy)
             classifier_provider = "groq_llm"
         except Exception as exc:
             ai = local_classify(inp)
-            ai["explanation"] = f"Groq failed; local fallback used. {ai.get('explanation', '')}"
+            ai["explanation"] = f"Groq classification failed; offline baseline fallback used. {ai.get('explanation', '')}"
+            ai["context_analysis"] = f"Groq error: {exc}. Local fallback considered available context."
             classifier_provider = "local_fallback"
-    else:
+    elif provider == "local":
         ai = local_classify(inp)
-        classifier_provider = "local_config_rules"
+        classifier_provider = "local_keyword_baseline"
+    else:
+        raise ValueError("CLASSIFIER_PROVIDER must be auto, groq, or local")
 
     scores = {cat: float(ai.get("categories", {}).get(cat, 0.0)) for cat in HARM_CATEGORIES}
     primary = ai.get("primary_category") or max(scores, key=scores.get)
@@ -186,24 +297,32 @@ def moderate(inp: ModerationInput) -> Dict[str, Any]:
         "routing": routing,
         "requires_human_review": review,
         "classifier_provider": classifier_provider,
+        "provider_requested": provider_requested,
+        "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile") if classifier_provider == "groq_llm" else None,
         "pipeline_trace": [
             {"stage": "input", "detail": "Content and context received."},
             {"stage": "classification", "detail": f"Provider={classifier_provider}; primary={primary}; confidence={confidence}."},
             {"stage": "policy", "detail": f"Applied platform policy: {inp.platform}."},
             {"stage": "routing", "detail": f"Routing={routing}; decision={final_decision}."},
-            {"stage": "audit", "detail": "Decision saved to SQLite."}
+            {"stage": "audit", "detail": "Decision saved to SQLite audit log."},
         ],
     }
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT INTO moderation_logs(id, request_json, response_json, created_at) VALUES (?, ?, ?, ?)", (response["id"], json.dumps(inp.__dict__), json.dumps(response), datetime.now(timezone.utc).isoformat()))
+    with open_db() as conn:
+        conn.execute(
+            "INSERT INTO moderation_logs(id, request_json, response_json, created_at) VALUES (?, ?, ?, ?)",
+            (response["id"], json.dumps(inp.__dict__), json.dumps(response), datetime.now(timezone.utc).isoformat()),
+        )
         if review:
-            conn.execute("INSERT INTO review_queue(case_id, response_json, created_at) VALUES (?, ?, ?)", (response["id"], json.dumps(response), datetime.now(timezone.utc).isoformat()))
+            conn.execute(
+                "INSERT INTO review_queue(case_id, response_json, created_at) VALUES (?, ?, ?)",
+                (response["id"], json.dumps(response), datetime.now(timezone.utc).isoformat()),
+            )
     return response
 
 
 def list_review_queue() -> List[Dict[str, Any]]:
     init_db()
-    with sqlite3.connect(DB_PATH) as conn:
+    with open_db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT case_id, response_json, status FROM review_queue WHERE status='pending' ORDER BY created_at ASC").fetchall()
     return [{"case_id": row["case_id"], "status": row["status"], "ai_decision": json.loads(row["response_json"])} for row in rows]
@@ -211,12 +330,15 @@ def list_review_queue() -> List[Dict[str, Any]]:
 
 def save_review(case_id: str, decision: str, notes: str = "") -> Dict[str, Any]:
     init_db()
-    with sqlite3.connect(DB_PATH) as conn:
+    with open_db() as conn:
         row = conn.execute("SELECT response_json FROM review_queue WHERE case_id=?", (case_id,)).fetchone()
         if not row:
             raise KeyError(case_id)
         conn.execute("UPDATE review_queue SET status='reviewed' WHERE case_id=?", (case_id,))
-        conn.execute("INSERT INTO moderator_feedback(case_id, decision, notes, created_at) VALUES (?, ?, ?, ?)", (case_id, decision, notes, datetime.now(timezone.utc).isoformat()))
+        conn.execute(
+            "INSERT INTO moderator_feedback(case_id, decision, notes, created_at) VALUES (?, ?, ?, ?)",
+            (case_id, decision, notes, datetime.now(timezone.utc).isoformat()),
+        )
     result = json.loads(row[0])
     result["moderator_decision"] = decision
     result["moderator_notes"] = notes
@@ -235,8 +357,9 @@ def run_evaluation() -> Dict[str, Any]:
     results = []
     passed = 0
     for content, platform, expected in cases:
-        res = moderate(ModerationInput(content=content, platform=platform, conversation_context="Movie quote discussion." if "villain" in content else ""))
+        context = "Movie quote discussion." if "villain" in content else ""
+        res = moderate(ModerationInput(content=content, platform=platform, conversation_context=context))
         ok = res["primary_category"] == expected or (expected == "none" and res["routing"] == "allow")
         passed += int(ok)
         results.append({"content": content, "expected": expected, "actual": res["primary_category"], "routing": res["routing"], "passed": ok})
-    return {"total": len(results), "passed": passed, "failed": len(results)-passed, "results": results}
+    return {"total": len(results), "passed": passed, "failed": len(results) - passed, "results": results}
