@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api_gateway.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api_gateway.py"
+    }
+  ],
+  "functions": {
+    "api_gateway.py": {
+      "maxDuration": 30
+    }
+  }
+}
