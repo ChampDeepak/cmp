@@ -253,9 +253,9 @@ export default function Dashboard({ health }) {
             <div className="animate-fade-in" style={{ animationDelay: '180ms' }}>
               <StatCard
                 icon={ListOrdered}
-                label="Queue Size"
+                label="Total Events"
                 value={stats?.queue_size ?? 0}
-                hint="pending in stream"
+                hint="in moderation stream"
                 accent="amber"
                 loading={loading}
               />
