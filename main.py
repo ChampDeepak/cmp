@@ -1,6 +1,6 @@
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -257,7 +257,13 @@ async def get_moderation_results(platform_id: int = Query(None)):
                 r = dict(row)
                 r["request_id"] = str(r["request_id"])
                 if r["completed_at"]:
-                    r["completed_at"] = r["completed_at"].isoformat()
+                    ts = r["completed_at"]
+                    # Stored values are UTC; mark them as UTC so the browser
+                    # converts to the viewer's local time instead of treating
+                    # the UTC numbers as local.
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    r["completed_at"] = ts.isoformat()
                 results.append(r)
             return results
     except Exception as e:
